@@ -1,3 +1,4 @@
+Creation of emotion detector function
 import requests, json
 
 url = "https://sn-watson-emotion.labs.skills.network/v1/watson.runtime.nlp.v1/NlpService/EmotionPredict"
@@ -33,6 +34,12 @@ def emotion_detector(text_to_analyze):
         'joy': joy_score,
         'sadness': sadness_score
     }
+ # Find dominant emotion
+    dominant_emotion = max(emotion_dict, key=emotion_dict.get)
+    emotion_dict['dominant_emotion'] = dominant_emotion
+
+    return emotion_dict
+
 Unit test file
 from emotionDetection.emotion_detection import emotion_detector
 import unittest
@@ -56,8 +63,112 @@ class TestEmotionDetector(unittest.TestCase):
 
 unittest.main()
 
-    # Find dominant emotion
-    dominant_emotion = max(emotion_dict, key=emotion_dict.get)
-    emotion_dict['dominant_emotion'] = dominant_emotion
+Deployment of web application
+from flask import Flask, render_template, request
+from emotionDetection.emotion_detection import emotion_detector
 
-    return emotion_dict
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/index')
+def index():
+    return render_template("index.html")
+
+@app.route("/emotionDetector", methods=["GET"])
+def emotionDetector():
+    text = request.args.get("textToAnalyze")   
+    result = emotion_detector(text)            
+
+    response_text = (
+        f"For the given statement, the system response is "
+        f"'anger': {result['anger']}, 'disgust': {result['disgust']}, "
+        f"'fear': {result['fear']}, 'joy': {result['joy']} and "
+        f"'sadness': {result['sadness']}. "
+        f"The dominant emotion is {result['dominant_emotion']}."
+    )
+    
+    return f"<h2>{response_text}</h2>"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+Error handling(change in emotion_detection.py file)
+import requests
+
+url = "https://sn-watson-emotion.labs.skills.network/v1/watson.runtime.nlp.v1/NlpService/EmotionPredict"
+headers = {
+    "grpc-metadata-mm-model-id": "emotion_aggregated-workflow_lang_en_stock"
+}
+
+def emotion_detector(text_to_analyze):
+    if not text_to_analyze.strip():  # Handle empty input directly
+        return {
+            "anger": None,
+            "disgust": None,
+            "fear": None,
+            "joy": None,
+            "sadness": None,
+            "dominant_emotion": None
+        }
+
+    input_json = {"raw_document": {"text": text_to_analyze}}
+    response = requests.post(url, headers=headers, json=input_json)
+
+    if response.status_code == 400:  # Handle server error for blank input
+        return {
+            "anger": None,
+            "disgust": None,
+            "fear": None,
+            "joy": None,
+            "sadness": None,
+            "dominant_emotion": None
+        }
+
+    result = response.json()
+    emotions = result["emotionPredictions"][0]["emotion"]
+
+    dominant_emotion = max(emotions, key=emotions.get)
+
+    return {
+        "anger": emotions["anger"],
+        "disgust": emotions["disgust"],
+        "fear": emotions["fear"],
+        "joy": emotions["joy"],
+        "sadness": emotions["sadness"],
+        "dominant_emotion": dominant_emotion
+    }
+
+
+Error handling(change in server.py file)
+from flask import Flask, render_template, request
+from emotionDetection.emotion_detection import emotion_detector
+
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/index')
+def index():
+    return render_template("index.html")
+
+@app.route("/emotionDetector", methods=["GET"])
+def emotionDetector():
+    text = request.args.get("textToAnalyze")   
+    result = emotion_detector(text)     
+    if result["dominant_emotion"] is None:
+        return "<h2>Invalid text! Please try again!</h2>"       
+
+    response_text = (
+        f"For the given statement, the system response is "
+        f"'anger': {result['anger']}, 'disgust': {result['disgust']}, "
+        f"'fear': {result['fear']}, 'joy': {result['joy']} and "
+        f"'sadness': {result['sadness']}. "
+        f"The dominant emotion is {result['dominant_emotion']}."
+    )
+    
+    return f"<h2>{response_text}</h2>"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
